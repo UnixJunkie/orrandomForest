@@ -1,8 +1,8 @@
 open Printf
 
-module Gbtree = Orxgboost.Gbtree
+module Rf = OrrandomForest.Rf
 module L = BatList
-module Utls = Orxgboost.Utls
+module Utls = OrrandomForest.Utls
 
 module Score_label = struct
   type t = bool * float (* (label, pred_score) *)
@@ -10,7 +10,7 @@ module Score_label = struct
   let get_score (_, s) = s
 end
 
-module ROC = MakeROC.Make(Score_label)
+module ROC = Cpm.MakeROC.Make(Score_label)
 
 let main () =
   Log.set_log_level Log.DEBUG;
@@ -19,45 +19,32 @@ let main () =
   let sparse_data_fn = "data/train_data.csr" in
   let labels_fn = "data/train_labels.txt" in
   let preds =
-    let params = Gbtree.default_gbtree_params () in
+    let params = Rf.(default_params 1831 Classification) in
     let model =
-      Gbtree.train
+      Rf.train
         ~debug:true
         Dense
         10
         params
         data_fn
         labels_fn in
-    Gbtree.read_predictions
-      (Gbtree.predict ~debug:true Dense model data_fn) in
+    Rf.read_predictions
+      (Rf.predict ~debug:true Dense model data_fn) in
   let sparse_preds =
-    let params = Gbtree.default_gbtree_params () in
-    let sparsity = Gbtree.Sparse 1831 in
+    let params = Rf.(default_params 1831 Classification) in
+    let sparsity = Rf.Sparse 1831 in
     let model =
-      Gbtree.train
+      Rf.train
         ~debug:true
         sparsity
         10
         params
         sparse_data_fn
         labels_fn in
-    Gbtree.read_predictions
-      (Gbtree.predict ~debug:true sparsity model sparse_data_fn) in
-  let lin_preds =
-    let params = Gbtree.default_linear_params () in
-    let model =
-      Gbtree.train
-        ~debug:true
-        Dense
-        10
-        params
-        data_fn
-        labels_fn in
-    let preds_fn = Gbtree.predict ~debug:true Dense model data_fn in
-    Gbtree.read_predictions preds_fn in
+    Rf.read_predictions
+      (Rf.predict ~debug:true sparsity model sparse_data_fn) in
   assert(List.length preds = 88);
   assert(List.length sparse_preds = 88);
-  assert(List.length lin_preds = 88);
   (* List.iter (printf "%f\n") predictions *)
   let labels =
     let labels_line = Utls.with_in_file labels_fn input_line in
@@ -69,9 +56,7 @@ let main () =
       ) label_strings in
   let auc = ROC.auc (List.combine labels preds) in
   let sparse_auc = ROC.auc (List.combine labels sparse_preds) in
-  let lin_auc = ROC.auc (List.combine labels lin_preds) in
   printf "AUC: %.3f\n" auc;
-  printf "sparse AUC: %.3f\n" sparse_auc;
-  printf "lin AUC: %.3f\n" lin_auc
+  printf "sparse AUC: %.3f\n" sparse_auc
 
 let () = main ()
