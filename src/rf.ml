@@ -32,54 +32,24 @@ let string_of_params debug { ntree; mtry; importance } =
 let collect_script_and_log =
   Utls.collect_script_and_log
 
-type nb_columns = int
-type sparsity = Dense
-              | Sparse of nb_columns
-
-let read_csr_file =
-"read_csr_file <- function(file, ncol = NULL)\n\
-{\n\
-    lines <- readLines(file)\n\
-    nrow <- length(lines)\n\
-    res <- Matrix(0, nrow, ncol)\n\
-    i <- 1\n\
-    for (line in lines) {\n\
-      cols = strsplit(line, '[ ]+')\n\
-      for (col in cols[[1]]) {\n\
-        s <- strsplit(col, ':')\n\
-        j <- as.integer(s[[1]][1])\n\
-        k <- as.numeric(s[[1]][2])\n\
-        res[i, j] <- k\n\
-      }\n\
-      i <- i + 1\n\
-    }\n\
-    res\n\
-}"
-
-let read_matrix_str maybe_sparse data_fn =
-  match maybe_sparse with
-  | Dense ->
-    sprintf "as.matrix(read.table('%s', colClasses = 'numeric'))" data_fn
-  | Sparse ncol ->
-    sprintf "read_csr_file('%s', ncol = %d)" data_fn ncol
+let read_matrix_str data_fn =
+  sprintf "as.matrix(read.table('%s', colClasses = 'numeric'))" data_fn
 
 (* train model and return the filename it was saved to upon success *)
 let train
     ?debug:(debug = false)
-    (sparse: sparsity)
     (params: params)
     (data_fn: filename)
     (labels_fn: filename): Result.t =
   let model_fn: filename = Filename.temp_file "orrf_model_" ".bin" in
   (* create R script and store it in a temp file *)
   let r_script_fn = Filename.temp_file "orrf_train_" ".r" in
-  let read_x_str = read_matrix_str sparse data_fn in
+  let read_x_str = read_matrix_str data_fn in
   let params_str = string_of_params debug params in
   Utls.with_out_file r_script_fn (fun out ->
       fprintf out
         "library('randomForest', quietly = TRUE)\n\
          library(Matrix)\n\
-         %s\n\
          x <- %s\n\
          y <- as.vector(read.table('%s'), mode = 'numeric')\n\
          y <- cut(y, breaks = 2, labels = c(\"0\",\"1\"))\n\
@@ -87,7 +57,6 @@ let train
          rf_model <- randomForest(x, y, %s)\n\
          save(rf_model, file = \"%s\")\n\
          quit()\n"
-        read_csr_file
         read_x_str
         labels_fn
         params_str
@@ -109,20 +78,18 @@ let train
 (* use model in 'model_fn' to predict decision values for test data in
    'data_fn' and return the filename containing values upon success *)
 let predict ?debug:(debug = false)
-    (sparse: sparsity) (maybe_model_fn: Result.t) (data_fn: filename)
-  : Result.t =
+    (maybe_model_fn: Result.t) (data_fn: filename): Result.t =
   match maybe_model_fn with
   | Error err -> Error err
   | Ok model_fn ->
     let predictions_fn = Filename.temp_file "orrf_predictions_" ".txt" in
     (* create R script in temp file *)
     let r_script_fn = Filename.temp_file "orrf_predict_" ".r" in
-    let read_x_str = read_matrix_str sparse data_fn in
+    let read_x_str = read_matrix_str data_fn in
     Utls.with_out_file r_script_fn (fun out ->
         fprintf out
           "library('randomForest', quietly = TRUE)\n\
            library(Matrix)\n\
-           %s\n\
            newdata <- %s\n\
            load('%s')\n\
            values <- predict(rf_model, newdata, type = 'vote')\n\
@@ -131,7 +98,7 @@ let predict ?debug:(debug = false)
            write.table(values, file = '%s', sep = '\\n', \
                        row.names = FALSE, col.names = FALSE)\n\
            quit()\n"
-          read_csr_file read_x_str model_fn predictions_fn
+          read_x_str model_fn predictions_fn
       );
     (* execute it *)
     let r_log_fn = Filename.temp_file "orrf_predict_" ".log" in
