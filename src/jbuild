@@ -1,12 +1,12 @@
 (jbuild_version 1)
 
 (library
- ((name        orxgboost)
-  (public_name orxgboost)
-  (modules (result utls gbtree))
+ ((name        orrandomForest)
+  (public_name orrandomForest)
+  (modules (result utls rf))
   (libraries (dolog))))
 
 (executables
  ((names     (test))
   (modules (test))
-  (libraries (dolog batteries cpm orxgboost))))
+  (libraries (dolog batteries cpm orrandomForest))))
