@@ -19,32 +19,31 @@ let main () =
   let sparse_data_fn = "data/train_data.csr" in
   let labels_fn = "data/train_labels.txt" in
   let preds =
-    let params = Rf.(default_params 1831 Classification) in
+    let params = Rf.(default_params 1831 Class) in
     let model =
       Rf.train
         ~debug:true
         Dense
-        10
         params
         data_fn
         labels_fn in
     Rf.read_predictions
       (Rf.predict ~debug:true Dense model data_fn) in
-  let sparse_preds =
-    let params = Rf.(default_params 1831 Classification) in
-    let sparsity = Rf.Sparse 1831 in
-    let model =
-      Rf.train
-        ~debug:true
-        sparsity
-        10
-        params
-        sparse_data_fn
-        labels_fn in
-    Rf.read_predictions
-      (Rf.predict ~debug:true sparsity model sparse_data_fn) in
+  (* let sparse_preds =
+   *   let params = Rf.(default_params 1831 Classification) in
+   *   let sparsity = Rf.Sparse 1831 in
+   *   let model =
+   *     Rf.train
+   *       ~debug:true
+   *       sparsity
+   *       10
+   *       params
+   *       sparse_data_fn
+   *       labels_fn in
+   *   Rf.read_predictions
+   *     (Rf.predict ~debug:true sparsity model sparse_data_fn) in *)
   assert(List.length preds = 88);
-  assert(List.length sparse_preds = 88);
+  (* assert(List.length sparse_preds = 88); *)
   (* List.iter (printf "%f\n") predictions *)
   let labels =
     let labels_line = Utls.with_in_file labels_fn input_line in
@@ -55,8 +54,8 @@ let main () =
         | other -> failwith other
       ) label_strings in
   let auc = ROC.auc (List.combine labels preds) in
-  let sparse_auc = ROC.auc (List.combine labels sparse_preds) in
-  printf "AUC: %.3f\n" auc;
-  printf "sparse AUC: %.3f\n" sparse_auc
+  (* let sparse_auc = ROC.auc (List.combine labels sparse_preds) in *)
+  printf "AUC: %.3f\n" auc
+  (* printf "sparse AUC: %.3f\n" sparse_auc *)
 
 let () = main ()
