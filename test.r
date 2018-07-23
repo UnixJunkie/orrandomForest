@@ -25,7 +25,7 @@ load("rf_model.bin")
 # stupid test on training data; don't do this at home !!!
 values <- predict(rf, newdata = x, type = 'vote')
 
-# get only votes for active class
+# get votes for the active class
 values <- values[,2]
 
 write.table(values, file = "data/predictions.txt", sep = "\n", row.names = F, col.names = F)
