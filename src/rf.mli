@@ -15,6 +15,8 @@ type nb_columns = int
 type sparsity = Dense
               | Sparse of nb_columns
 
+val default_params: int -> mode -> params
+
 val train:
   ?debug:bool ->
   mode ->
