@@ -70,9 +70,10 @@ let rmse l1 l2 =
 let test_regression () =
   let train_features_fn = "data/Boston_train_features.csv" in
   let train_values_fn = "data/Boston_train_values.csv" in
-  let actual = Utls.float_list_of_file "data/Boston_test_values.csv" in
+  let test_features_fn = "data/Boston_test_features.csv" in
+  let test_features_sparse_fn = "data/Boston_test_features.csr" in
+  let params = Rf.(default_params 13 Regre) in
   let preds =
-    let params = Rf.(default_params 13 Regre) in
     let sparsity = Rf.Dense in
     let model =
       Rf.(train
@@ -82,13 +83,30 @@ let test_regression () =
             params
             train_features_fn
             train_values_fn) in
-    let test_features_fn = "data/Boston_test_features.csv" in
     Rf.(read_predictions
           (predict ~debug:true Regre sparsity model test_features_fn)) in
+  let sparse_preds =
+    let train_features_sparse_fn = "data/Boston_train_features.csr" in
+    let sparsity = Rf.Sparse 13 in
+    let model =
+      Rf.(train
+            ~debug:true
+            Regre
+            sparsity
+            params
+            train_features_sparse_fn
+            train_values_fn) in
+    Rf.(read_predictions
+          (predict ~debug:true Regre sparsity model test_features_sparse_fn)) in
+  let actual = Utls.float_list_of_file "data/Boston_test_values.csv" in
   assert(List.length actual = List.length preds);
   assert(List.length preds = 50);
+  assert(List.length sparse_preds = 50);
   let err = rmse preds actual in
-  printf "test set RMSE: %.3f\n" err
+  let sparse_err = rmse sparse_preds actual in
+  printf "test set RMSE: %.3f\n" err;
+  printf "sparse test set RMSE: %.3f\n" sparse_err
+  (* FBR: plot actual versus predicted and fit *)
 
 let main () =
   Log.set_log_level Log.DEBUG;
