@@ -12,9 +12,7 @@ end
 
 module ROC = Cpm.MakeROC.Make(Score_label)
 
-let main () =
-  Log.set_log_level Log.DEBUG;
-  Log.color_on ();
+let test_classification () =
   let data_fn = "data/train_data.txt" in
   let sparse_data_fn = "data/train_data.csr" in
   let labels_fn = "data/train_labels.txt" in
@@ -22,26 +20,28 @@ let main () =
     let params = Rf.(default_params 1831 Class) in
     let sparsity = Rf.Dense in
     let model =
-      Rf.train
-        ~debug:true
-        sparsity
-        params
-        data_fn
-        labels_fn in
-    Rf.read_predictions
-      (Rf.predict ~debug:true sparsity model data_fn) in
+      Rf.(train
+            ~debug:true
+            Class
+            sparsity
+            params
+            data_fn
+            labels_fn) in
+    Rf.(read_predictions
+          (predict ~debug:true Class sparsity model data_fn)) in
   let sparse_preds =
     let params = Rf.(default_params 1831 Class) in
     let sparsity = Rf.Sparse 1831 in
     let model =
-      Rf.train
-        ~debug:true
-        sparsity
-        params
-        sparse_data_fn
-        labels_fn in
-    Rf.read_predictions
-      (Rf.predict ~debug:true sparsity model sparse_data_fn) in
+      Rf.(train
+            ~debug:true
+            Class
+            sparsity
+            params
+            sparse_data_fn
+            labels_fn) in
+    Rf.(read_predictions
+          (predict ~debug:true Class sparsity model sparse_data_fn)) in
   assert(List.length preds = 88);
   assert(List.length sparse_preds = 88);
   let labels =
@@ -56,5 +56,44 @@ let main () =
   let sparse_auc = ROC.auc (List.combine labels sparse_preds) in
   printf "AUC: %.3f\n" auc;
   printf "sparse AUC: %.3f\n" sparse_auc
+
+let rmse l1 l2 =
+  let l = L.combine l1 l2 in
+  let n = float (L.length l1) in
+  let sum_diff2 =
+    L.fold_left (fun acc (x, y) ->
+        let diff = x -. y in
+        acc +. (diff *. diff)
+      ) 0.0 l in
+  sqrt (sum_diff2 /. n)
+
+let test_regression () =
+  let train_features_fn = "data/Boston_train_features.csv" in
+  let train_values_fn = "data/Boston_train_values.csv" in
+  let actual = Utls.float_list_of_file "data/Boston_test_values.csv" in
+  let preds =
+    let params = Rf.(default_params 13 Regre) in
+    let sparsity = Rf.Dense in
+    let model =
+      Rf.(train
+            ~debug:true
+            Regre
+            sparsity
+            params
+            train_features_fn
+            train_values_fn) in
+    let test_features_fn = "data/Boston_test_features.csv" in
+    Rf.(read_predictions
+          (predict ~debug:true Regre sparsity model test_features_fn)) in
+  assert(List.length actual = List.length preds);
+  assert(List.length preds = 50);
+  let err = rmse preds actual in
+  printf "test set RMSE: %.3f\n" err
+
+let main () =
+  Log.set_log_level Log.DEBUG;
+  Log.color_on ();
+  test_regression ();
+  test_classification ()
 
 let () = main ()

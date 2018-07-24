@@ -69,6 +69,7 @@ let sparse_to_dense sparse_matrix_name =
 (* train model and return the filename it was saved to upon success *)
 let train
     ?debug:(debug = false)
+    (mode: mode)
     (sparse: sparsity)
     (params: params)
     (data_fn: filename)
@@ -77,16 +78,22 @@ let train
   (* create R script and store it in a temp file *)
   let r_script_fn = Filename.temp_file "orrf_train_" ".r" in
   let read_x_str = read_matrix_str sparse data_fn in
+  let read_y_str =
+    match mode with
+    | Class ->
+      sprintf "y <- as.vector(read.table('%s'), mode = 'numeric')\n\
+               y <- cut(y, breaks = 2, labels = c(\"0\",\"1\"))"
+        labels_fn
+    | Regre -> sprintf "y <- scan('%s')" labels_fn in
   let params_str = string_of_params debug params in
   Utls.with_out_file r_script_fn (fun out ->
       fprintf out
         "library('randomForest', quietly = TRUE)\n\
-         library(Matrix)\n\
+         library('Matrix')\n\
          %s\n\
          x <- %s\n\
          %s\n\
-         y <- as.vector(read.table('%s'), mode = 'numeric')\n\
-         y <- cut(y, breaks = 2, labels = c(\"0\",\"1\"))\n\
+         %s\n\
          stopifnot(nrow(x) == length(y))\n\
          rf_model <- randomForest(x, y, %s)\n\
          save(rf_model, file = \"%s\")\n\
@@ -94,7 +101,7 @@ let train
         read_csr_file
         read_x_str
         (if sparse <> Dense then sparse_to_dense "x" else "")
-        labels_fn
+        read_y_str
         params_str
         model_fn
     );
@@ -113,9 +120,12 @@ let train
 
 (* use model in 'model_fn' to predict decision values for test data in
    'data_fn' and return the filename containing values upon success *)
-let predict ?debug:(debug = false)
-    (sparse: sparsity) (maybe_model_fn: Result.t) (data_fn: filename)
-  : Result.t =
+let predict
+    ?debug:(debug = false)
+    (mode: mode)
+    (sparse: sparsity)
+    (maybe_model_fn: Result.t)
+    (data_fn: filename): Result.t =
   match maybe_model_fn with
   | Error err -> Error err
   | Ok model_fn ->
@@ -123,16 +133,21 @@ let predict ?debug:(debug = false)
     (* create R script in temp file *)
     let r_script_fn = Filename.temp_file "orrf_predict_" ".r" in
     let read_x_str = read_matrix_str sparse data_fn in
+    let predict_str =
+      match mode with
+      | Class ->
+        "values <- predict(rf_model, newdata, type = 'vote')\n\
+         values <- values[,2]"
+      | Regre -> "values <- predict(rf_model, newdata)" in
     Utls.with_out_file r_script_fn (fun out ->
         fprintf out
           "library('randomForest', quietly = TRUE)\n\
-           library(Matrix)\n\
+           library('Matrix')\n\
            %s\n\
            newdata <- %s\n\
            %s\n\
            load('%s')\n\
-           values <- predict(rf_model, newdata, type = 'vote')\n\
-           values <- values[,2]\n\
+           %s\n\
            stopifnot(nrow(newdata) == length(values))\n\
            write.table(values, file = '%s', sep = '\\n', \
                        row.names = FALSE, col.names = FALSE)\n\
@@ -141,6 +156,7 @@ let predict ?debug:(debug = false)
           read_x_str
           (if sparse <> Dense then sparse_to_dense "newdata" else "")
           model_fn
+          predict_str
           predictions_fn
       );
     (* execute it *)
