@@ -9,17 +9,17 @@ type params = { ntree: int; (* number of trees *)
                               as candidates at each split *)
                 importance: bool } (* compute variables' importance *)
 
-type mode = Regre
-          | Class
+type mode = Regression
+          | Classification
 
 let default_params (num_vars: int) (mode: mode): params =
   match mode with
-  | Regre -> { ntree = 500;
-               mtry = max (num_vars / 3) 1;
-               importance = false }
-  | Class -> { ntree = 500;
-               mtry = int_of_float (floor (sqrt (float num_vars)));
-               importance = false }
+  | Regression -> { ntree = 500;
+                    mtry = max (num_vars / 3) 1;
+                    importance = false }
+  | Classification -> { ntree = 500;
+                        mtry = int_of_float (floor (sqrt (float num_vars)));
+                        importance = false }
 
 let string_of_params debug { ntree; mtry; importance } =
   sprintf "ntree = %d, mtry = %d, importance = %s, do.trace = %s"
@@ -80,11 +80,11 @@ let train
   let read_x_str = read_matrix_str sparse data_fn in
   let read_y_str =
     match mode with
-    | Class ->
+    | Classification ->
       sprintf "y <- as.vector(read.table('%s'), mode = 'numeric')\n\
                y <- cut(y, breaks = 2, labels = c(\"0\",\"1\"))"
         labels_fn
-    | Regre -> sprintf "y <- scan('%s')" labels_fn in
+    | Regression -> sprintf "y <- scan('%s')" labels_fn in
   let params_str = string_of_params debug params in
   Utls.with_out_file r_script_fn (fun out ->
       fprintf out
@@ -135,10 +135,10 @@ let predict
     let read_x_str = read_matrix_str sparse data_fn in
     let predict_str =
       match mode with
-      | Class ->
+      | Classification ->
         "values <- predict(rf_model, newdata, type = 'vote')\n\
          values <- values[,2]"
-      | Regre -> "values <- predict(rf_model, newdata)" in
+      | Regression -> "values <- predict(rf_model, newdata)" in
     Utls.with_out_file r_script_fn (fun out ->
         fprintf out
           "library('randomForest', quietly = TRUE)\n\
