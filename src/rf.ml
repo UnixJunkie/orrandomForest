@@ -49,7 +49,7 @@ let read_csr_file =
         s <- strsplit(col, ':')\n\
         j <- as.integer(s[[1]][1])\n\
         k <- as.numeric(s[[1]][2])\n\
-        res[i, j] <- k\n\
+        res[i, j +  1] <- k\n\
       }\n\
       i <- i + 1\n\
     }\n\
