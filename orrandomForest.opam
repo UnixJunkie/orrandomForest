@@ -12,6 +12,13 @@ build: [
 ]
 depends: [
   "dune" {build}
+  "dolog"
   "conf-r"
   "conf-gnuplot" {test}
+]
+post-messages: [
+"Please interact with R to install needed things in user-space:
+R
+install.packages('Marix', repos='http://cran.r-project.org')
+install.packages('randomForest', repos='http://cran.r-project.org')" {failure}
 ]
