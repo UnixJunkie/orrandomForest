@@ -172,6 +172,40 @@ let predict
         (if not debug then L.iter Sys.remove [r_script_fn; r_log_fn])
         (Result.Ok predictions_fn)
 
-(* read predicted decision values *)
+(* retrieve features importance from a trained model *) 
+let get_features_importance
+    ?debug:(debug = false) (maybe_model_fn: Result.t): Result.t =
+  match maybe_model_fn with
+  | Error err -> Error err
+  | Ok model_fn ->
+    let importance_fn = Filename.temp_file "orrf_imp_" ".txt" in
+    (* create R script in temp file *)
+    let r_script_fn = Filename.temp_file "orrf_imp_" ".r" in
+    Utls.with_out_file r_script_fn (fun out ->
+        fprintf out
+          "library('randomForest', quietly = TRUE)\n\
+           load('%s')\n\
+           values <- importance(rf_model)\n\
+           imps <- if (dim(values)[2] > 1) {values[,2]} else {values[,1]}\n\
+           write.table(imps, file = '%s', sep = '\\n', \
+                       row.names = FALSE, col.names = FALSE)\n\
+           quit()\n"
+          model_fn
+          importance_fn
+      );
+    (* execute it *)
+    let r_log_fn = Filename.temp_file "orrf_imp_" ".log" in
+    let cmd =
+      sprintf "R --vanilla --slave < %s 2>&1 > %s"
+        r_script_fn r_log_fn in
+    if debug then Log.debug "%s" cmd;
+    if Sys.command cmd <> 0 then
+      collect_script_and_log debug r_script_fn r_log_fn importance_fn
+    else
+      Utls.ignore_fst
+        (if not debug then L.iter Sys.remove [r_script_fn; r_log_fn])
+        (Result.Ok importance_fn)
+
+(* read floats in a text file, one per line *)
 let read_predictions ?debug:(debug = false) =
   Utls.read_predictions debug

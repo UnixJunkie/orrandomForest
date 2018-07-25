@@ -25,6 +25,13 @@ val train:
   filename ->
   filename -> Result.t
 
+(** retrieve IncNodePurity for each feature in a trained model.
+    Call read_predictions on the result to extract the float values. *)
+val get_features_importance:
+  ?debug:bool ->
+  Result.t ->
+  Result.t
+
 val predict:
   ?debug:bool ->
   mode ->

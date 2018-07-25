@@ -72,7 +72,9 @@ let test_regression () =
   let train_values_fn = "data/Boston_train_values.csv" in
   let test_features_fn = "data/Boston_test_features.csv" in
   let test_features_sparse_fn = "data/Boston_test_features.csr" in
-  let params = Rf.(default_params 13 Regression) in
+  let params =
+    let defaults = Rf.(default_params 13 Regression) in
+    { defaults with importance = true } in
   let preds =
     let sparsity = Rf.Dense in
     let model =
@@ -83,6 +85,9 @@ let test_regression () =
             params
             train_features_fn
             train_values_fn) in
+    let importances = Rf.(read_predictions (get_features_importance model)) in
+    Log.info "=== features importance:";
+    L.iter (Log.info "%f") importances;
     Rf.(read_predictions
           (predict ~debug:true Regression sparsity model test_features_fn)) in
   let sparse_preds =
@@ -111,7 +116,7 @@ let test_regression () =
           fprintf out "%f %f\n" x y
         ) (L.combine actual preds)
     );
-  Sys.command "\
+  let _ret = Sys.command "\
 gnuplot --persist <<EOF\n\
 set xlabel 'actual'\n\
 set ylabel 'predicted'\n\
@@ -119,12 +124,15 @@ f(x) = a * x + b\n\
 fit f(x) 'toplot' u 1:2 via a,b\n\
 set key left\n\
 plot 'toplot' u 1:2 t 'preds', f(x) t 'linear fit'\n\
-EOF\n"
+EOF\n" in
+  ()
 
 let main () =
-  Log.set_log_level Log.DEBUG;
-  Log.color_on ();
-  test_regression ();
-  test_classification ()
+  begin
+    Log.set_log_level Log.DEBUG;
+    Log.color_on ();
+    test_regression ();
+    test_classification ()
+  end
 
 let () = main ()
