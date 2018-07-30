@@ -50,6 +50,16 @@ val pre_train:
   filename ->
   filename -> Result.t
 
+(** [train_pre_trained ?debug mode sparsity params xy_fn]
+    same as [train] except that matrix x and the vector y
+    are loaded faster *)
+val train_pre_trained:
+  ?debug:bool ->
+  mode ->
+  sparsity ->
+  params ->
+  filename -> Result.t
+
 (** retrieve IncNodePurity for each feature in a trained model.
     Call read_predictions on the result to extract the float values. *)
 val get_features_importance:
