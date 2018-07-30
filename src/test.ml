@@ -42,8 +42,27 @@ let test_classification () =
             labels_fn) in
     Rf.(read_predictions
           (predict ~debug:true Classification sparsity model sparse_data_fn)) in
+  let pre_sparse_preds =
+    let params = Rf.(default_params 1831 Classification) in
+    let sparsity = Rf.Sparse 1831 in
+    let xy_fn =
+      Rf.(pre_train ~debug:true
+            Classification
+            sparsity
+            sparse_data_fn
+            labels_fn) in
+    let model =
+      Rf.(train_pre_trained ~debug:true
+            Classification
+            sparsity
+            params
+            xy_fn) in
+    Rf.(read_predictions
+          (predict ~debug:true
+             Classification sparsity model sparse_data_fn)) in
   assert(List.length preds = 88);
   assert(List.length sparse_preds = 88);
+  assert(List.length pre_sparse_preds = 88);
   let labels =
     let labels_line = Utls.with_in_file labels_fn input_line in
     let label_strings = BatString.split_on_char '\t' labels_line in
@@ -54,8 +73,10 @@ let test_classification () =
       ) label_strings in
   let auc = ROC.auc (List.combine labels preds) in
   let sparse_auc = ROC.auc (List.combine labels sparse_preds) in
+  let pre_sparse_auc = ROC.auc (List.combine labels pre_sparse_preds) in
   printf "AUC: %.3f\n" auc;
-  printf "sparse AUC: %.3f\n" sparse_auc
+  printf "sparse AUC: %.3f\n" sparse_auc;
+  printf "pre sparse AUC: %.3f\n" pre_sparse_auc
 
 let rmse l1 l2 =
   let l = L.combine l1 l2 in

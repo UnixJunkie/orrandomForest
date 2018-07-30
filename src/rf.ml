@@ -171,35 +171,38 @@ let train_pre_trained
     (mode: mode)
     (sparse: sparsity)
     (params: params)
-    (pre_train_fn: filename): Result.t =
-  let model_fn: filename = Filename.temp_file "orrf_model_" ".bin" in
-  (* create R script and store it in a temp file *)
-  let r_script_fn = Filename.temp_file "orrf_train_" ".r" in
-  let params_str = string_of_params debug params in
-  Utls.with_out_file r_script_fn (fun out ->
-      fprintf out
-        "library('randomForest', quietly = TRUE)\n\
-         library('Matrix')\n\
-         load('%s')\n\
-         rf_model <- randomForest(x, y, %s)\n\
-         save(rf_model, file = \"%s\")\n\
-         quit()\n"
-        pre_train_fn
-        params_str
-        model_fn
-    );
-  let r_log_fn = Filename.temp_file "orrf_train_" ".log" in
-  (* execute it *)
-  let cmd =
-    sprintf "R --vanilla --slave < %s 2>&1 > %s"
-      r_script_fn r_log_fn in
-  if debug then Log.debug "%s" cmd;
-  if Sys.command cmd <> 0 then
-    collect_script_and_log debug r_script_fn r_log_fn model_fn
-  else
-    Utls.ignore_fst
-      (if not debug then L.iter Sys.remove [r_script_fn; r_log_fn])
-      (Result.Ok model_fn)
+    (pre_train_fn: Result.t): Result.t =
+  match pre_train_fn with
+  | Error err -> Error err
+  | Ok xy_fn ->
+    let model_fn: filename = Filename.temp_file "orrf_model_" ".bin" in
+    (* create R script and store it in a temp file *)
+    let r_script_fn = Filename.temp_file "orrf_train_" ".r" in
+    let params_str = string_of_params debug params in
+    Utls.with_out_file r_script_fn (fun out ->
+        fprintf out
+          "library('randomForest', quietly = TRUE)\n\
+           library('Matrix')\n\
+           load('%s')\n\
+           rf_model <- randomForest(x, y, %s)\n\
+           save(rf_model, file = \"%s\")\n\
+           quit()\n"
+          xy_fn
+          params_str
+          model_fn
+      );
+    let r_log_fn = Filename.temp_file "orrf_train_" ".log" in
+    (* execute it *)
+    let cmd =
+      sprintf "R --vanilla --slave < %s 2>&1 > %s"
+        r_script_fn r_log_fn in
+    if debug then Log.debug "%s" cmd;
+    if Sys.command cmd <> 0 then
+      collect_script_and_log debug r_script_fn r_log_fn model_fn
+    else
+      Utls.ignore_fst
+        (if not debug then L.iter Sys.remove [r_script_fn; r_log_fn])
+        (Result.Ok model_fn)
 
 (* use model in 'model_fn' to predict decision values for test data in
    'data_fn' and return the filename containing values upon success *)

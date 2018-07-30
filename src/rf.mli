@@ -58,7 +58,7 @@ val train_pre_trained:
   mode ->
   sparsity ->
   params ->
-  filename -> Result.t
+  Result.t -> Result.t
 
 (** retrieve IncNodePurity for each feature in a trained model.
     Call read_predictions on the result to extract the float values. *)
