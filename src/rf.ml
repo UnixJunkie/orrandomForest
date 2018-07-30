@@ -105,7 +105,7 @@ let train
         params_str
         model_fn
     );
-  let r_log_fn = Filename.temp_file "orxgboost_train_" ".log" in
+  let r_log_fn = Filename.temp_file "orrf_train_" ".log" in
   (* execute it *)
   let cmd =
     sprintf "R --vanilla --slave < %s 2>&1 > %s"
@@ -117,6 +117,53 @@ let train
     Utls.ignore_fst
       (if not debug then L.iter Sys.remove [r_script_fn; r_log_fn])
       (Result.Ok model_fn)
+
+let pre_train
+    ?debug:(debug = false)
+    (mode: mode)
+    (sparse: sparsity)
+    (data_fn: filename)
+    (labels_fn: filename): Result.t =
+  let xy_fn: filename = Filename.temp_file "orrf_data_" ".bin" in
+  (* create R script and store it in a temp file *)
+  let r_script_fn = Filename.temp_file "orrf_data_" ".r" in
+  let read_x_str = read_matrix_str sparse data_fn in
+  let read_y_str =
+    match mode with
+    | Classification ->
+      sprintf "y <- as.vector(read.table('%s'), mode = 'numeric')\n\
+               y <- cut(y, breaks = 2, labels = c(\"0\",\"1\"))"
+        labels_fn
+    | Regression -> sprintf "y <- scan('%s')" labels_fn in
+  Utls.with_out_file r_script_fn (fun out ->
+      fprintf out
+        "library('randomForest', quietly = TRUE)\n\
+         library('Matrix')\n\
+         %s\n\
+         x <- %s\n\
+         %s\n\
+         %s\n\
+         stopifnot(nrow(x) == length(y))\n\
+         save(x, y, file = \"%s\")\n\
+         quit()\n"
+        read_csr_file
+        read_x_str
+        (if sparse <> Dense then sparse_to_dense "x" else "")
+        read_y_str
+        xy_fn
+    );
+  let r_log_fn = Filename.temp_file "orrf_data_" ".log" in
+  (* execute it *)
+  let cmd =
+    sprintf "R --vanilla --slave < %s 2>&1 > %s"
+      r_script_fn r_log_fn in
+  if debug then Log.debug "%s" cmd;
+  if Sys.command cmd <> 0 then
+    collect_script_and_log debug r_script_fn r_log_fn xy_fn
+  else
+    Utls.ignore_fst
+      (if not debug then L.iter Sys.remove [r_script_fn; r_log_fn])
+      (Result.Ok xy_fn)
 
 (* use model in 'model_fn' to predict decision values for test data in
    'data_fn' and return the filename containing values upon success *)
