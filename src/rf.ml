@@ -168,8 +168,8 @@ let pre_train
 (* train model and return the filename it was saved to upon success *)
 let train_pre_trained
     ?debug:(debug = false)
-    (mode: mode)
-    (sparse: sparsity)
+    (_mode: mode)
+    (_sparse: sparsity)
     (params: params)
     (pre_train_fn: Result.t): Result.t =
   match pre_train_fn with

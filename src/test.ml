@@ -78,16 +78,6 @@ let test_classification () =
   printf "sparse AUC: %.3f\n" sparse_auc;
   printf "pre sparse AUC: %.3f\n" pre_sparse_auc
 
-let rmse l1 l2 =
-  let l = L.combine l1 l2 in
-  let n = float (L.length l1) in
-  let sum_diff2 =
-    L.fold_left (fun acc (x, y) ->
-        let diff = x -. y in
-        acc +. (diff *. diff)
-      ) 0.0 l in
-  sqrt (sum_diff2 /. n)
-
 let test_regression () =
   let train_features_fn = "data/Boston_train_features.csv" in
   let train_values_fn = "data/Boston_train_values.csv" in
@@ -128,10 +118,14 @@ let test_regression () =
   assert(List.length actual = List.length preds);
   assert(List.length preds = 50);
   assert(List.length sparse_preds = 50);
-  let err = rmse preds actual in
-  let sparse_err = rmse sparse_preds actual in
+  let err = Cpm.RegrStats.rmse preds actual in
+  let r2 = Cpm.RegrStats.r2 preds actual in
+  let sparse_err = Cpm.RegrStats.rmse sparse_preds actual in
+  let sparse_r2 = Cpm.RegrStats.r2 sparse_preds actual in
   printf "test set RMSE: %.3f\n" err;
+  printf "test set r2: %.3f\n" r2;
   printf "sparse test set RMSE: %.3f\n" sparse_err;
+  printf "sparse test set r2: %.3f\n" sparse_r2;
   Utls.with_out_file "toplot" (fun out ->
       L.iter (fun (x, y) ->
           fprintf out "%f %f\n" x y
