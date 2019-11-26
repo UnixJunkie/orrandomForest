@@ -1,6 +1,7 @@
 open Printf
 
 module L = List
+module Log = Dolog.Log
 
 type filename = string
 
@@ -258,7 +259,7 @@ let predict
         (if not debug then L.iter Sys.remove [r_script_fn; r_log_fn])
         (Result.Ok predictions_fn)
 
-(* retrieve features importance from a trained model *) 
+(* retrieve features importance from a trained model *)
 let get_features_importance
     ?debug:(debug = false) (maybe_model_fn: Result.t): Result.t =
   match maybe_model_fn with
