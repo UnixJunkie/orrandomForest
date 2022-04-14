@@ -74,6 +74,33 @@ let split_label_features data_csv_fn =
  * [-s <filename>]: save model to file\n
  * [-l <filename>]: load model from file\n *)
 
+let train_test verbose trees features index2feature_name train_lines test_lines =
+  let tmp_train_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_train_" ".csv" in
+  let tmp_test_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_test_" ".csv" in
+  LO.lines_to_file tmp_train_fn train_lines;
+  LO.lines_to_file tmp_test_fn test_lines;
+  let train_features_fn, train_labels_fn = split_label_features tmp_train_fn in
+  let model = train_classifier verbose trees features train_features_fn train_labels_fn in
+  L.iter Sys.remove [tmp_train_fn; train_features_fn; train_labels_fn];
+  let feat_importance = Rf.read_predictions (Rf.get_features_importance model) in
+  assert(L.length feat_importance = A.length index2feature_name);
+  L.iteri (fun i imp ->
+      Log.info "imp(%s): %.2f" index2feature_name.(i) imp
+    ) feat_importance;
+  let test_features_fn, test_labels_fn = split_label_features tmp_test_fn in
+  let test_preds = test_classifier verbose model test_features_fn in
+  let test_labels =
+    (* all labels are on a single line in the labels file *)
+    let tab_separated = L.hd (LO.lines_of_file test_labels_fn) in
+    let label_strings = S.split_on_char '\t' tab_separated in
+    L.map (function
+        | "1" -> true
+        | "-1" -> false
+        | other -> failwith other
+      ) label_strings in
+  L.iter Sys.remove [tmp_test_fn; test_features_fn; test_labels_fn];
+  L.combine test_labels test_preds
+
 let main () =
   let argc, args = CLI.init () in
   Log.(set_log_level INFO);
@@ -115,6 +142,17 @@ let main () =
       (S.lchop header', L.shuffle ~state:rng data_lines)
     | _ -> failwith ("not enough lines in: " ^ input_fn) in
   Log.info "header: %s" header;
+  let nb_features = S.count_char header ' ' in
+  Log.info "|features|=%d" nb_features;
+  (* apply mtry param to nb_features *)
+  let features =
+    let nb_feats = float nb_features in
+    match maybe_mtry with
+    | None -> int_of_float (floor (sqrt nb_feats)) (* default *)
+    | Some mtry -> min nb_features (BatFloat.round_to_int (mtry *. nb_feats)) in
+  Log.info "using %d/%d features" features nb_features;
+  let index2feature_name = A.of_list (L.tl (S.split_on_char ' ' header)) in
+  assert(A.length index2feature_name = nb_features);
   if cv_folds <= 1 then
     let n = L.length all_lines in
     (* FBR: remove those files at the end *)
