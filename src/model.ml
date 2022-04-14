@@ -81,6 +81,7 @@ let main () =
   let argc, args = CLI.init () in
   Log.(set_log_level INFO);
   Log.color_on ();
+  Log.(set_prefix_builder short_prefix_builder);
   let train_portion_def = 0.8 in
   let nb_trees_def = 100 in
   if argc = 1 || CLI.get_set_bool ["-h";"--help"] args then
@@ -104,6 +105,7 @@ let main () =
     | Some seed -> Random.State.make [|seed|] in
   let nb_trees = CLI.get_int_def ["-n"] args nb_trees_def in
   let verbose = CLI.get_set_bool ["-v"] args in
+  let maybe_mtry = CLI.get_float_opt ["--mtry"] args in
   CLI.finalize (); (* ------------------------------------------------------ *)
   let header, all_lines =
     let lines = LO.lines_of_file input_fn in
@@ -126,7 +128,13 @@ let main () =
   let train_features_fn, train_labels_fn = split_label_features tmp_train_fn in
   let nb_features = S.count_char (L.hd all_lines) ' ' in
   Log.info "|features|=%d" nb_features;
-  let features = int_of_float (floor (sqrt (float nb_features))) in
+  (* apply mtry param to nb_features *)
+  let features =
+    let nb_feats = float nb_features in
+    match maybe_mtry with
+    | None -> int_of_float (floor (sqrt nb_feats)) (* default *)
+    | Some mtry -> min nb_features (BatFloat.round_to_int (mtry *. nb_feats)) in
+  Log.info "using %d/%d features" features nb_features;
   let model = train_classifier verbose nb_trees features train_features_fn train_labels_fn in
   let feat_importance = Rf.read_predictions (Rf.get_features_importance model) in
   let index2feature_name = A.of_list (L.tl (S.split_on_char ' ' header)) in
