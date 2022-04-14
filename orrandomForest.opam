@@ -15,6 +15,7 @@ depends: [
   "dune"
   "dolog"
   "conf-r"
+  "parany"
   "conf-gnuplot" {with-test}
   "cpm" {with-test}
 ]

@@ -67,8 +67,7 @@ let split_label_features verbose data_csv_fn =
     );
   (tmp_features_fn, tmp_labels_fn)
 
-(* [-np <int>]: max number of processes (default=1)\n
- * [--scan-mtry]: scan for best mtry in [0.001,0.002,0.005,...,1.0]\n
+(* [--scan-mtry]: scan for best mtry in [0.001,0.002,0.005,...,1.0]\n
  * (incompatible with --mtry)\n
  * [--mtry-range <string>]: mtrys to test e.g. "0.001,0.002,0.005"\n
  * [-o <filename>]: output scores to file\n
@@ -122,6 +121,7 @@ let main () =
                [--mtry <float>]: proportion of randomly selected features\n  \
                to use at each split (default=(sqrt(|feats|))/|feats|)\n  \
                [--NxCV <int>]: number of folds of cross validation\n  \
+               [-np <int>]: max number of processes for --NxCV (default=1)\n  \
                [-v]: verbose/debug mode\n"
         Sys.argv.(0) train_portion_def nb_trees_def;
       exit 1
@@ -135,6 +135,7 @@ let main () =
   let verbose = CLI.get_set_bool ["-v"] args in
   let maybe_mtry = CLI.get_float_opt ["--mtry"] args in
   let cv_folds = CLI.get_int_def ["--NxCV"] args 1 in
+  let nprocs = CLI.get_int_def ["-np"] args 1 in
   CLI.finalize (); (* ------------------------------------------------------ *)
   let header, all_lines =
     let lines = LO.lines_of_file input_fn in
@@ -167,8 +168,7 @@ let main () =
     else (* cv_folds > 1 *)
       let folds = Cpm.Utls.cv_folds cv_folds all_lines in
       let for_auc =
-        (* FBR: parallelization opportunity *)
-        L.map (fun (train_lines, test_lines) ->
+        Parany.Parmap.parmap nprocs (fun (train_lines, test_lines) ->
             train_test verbose nb_trees features index2feature_name train_lines test_lines
           ) folds in
       L.concat for_auc in
