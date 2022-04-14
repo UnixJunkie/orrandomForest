@@ -66,7 +66,27 @@ let split_label_features data_csv_fn =
     );
   (tmp_features_fn, tmp_labels_fn)
 
-let () =
+ (* [-p <float>]: proportion of the (randomized) dataset\n
+  * used to train (default=%.2f)\n
+  * [-np <int>]: max number of processes (default=1)\n
+  * [-n <int>]: |RF|; default=100\n
+  * [--mtry <float>]: proportion of randomly selected features\n
+  * to use at each split (default=(sqrt(|features|))/|features|)\n
+  * [--scan-mtry]: scan for best mtry in [0.001,0.002,0.005,...,1.0]\n
+  * (incompatible with --mtry)\n
+  * [--mtry-range <string>]: mtrys to test e.g. \"0.001,0.002,0.005\"\n
+  * [-o <filename>]: output scores to file\n
+  * [--NxCV <int>]: number of folds of cross validation\n
+  * [--seed <int>: fix random seed]\n
+  * [--no-regr-plot]: turn OFF regression plot\n
+  * [-s <filename>]: save model to file\n
+  * [-l <filename>]: load model from file\n
+  * [--max-feat <int>]: max feature id.
+  * (cf. end of encoding dict)\n
+  * [-v]: verbose/debug mode\n
+  * [-h|--help]: show this help message\n" *)
+
+let main () =
   let argc, args = CLI.init () in
   Log.(set_log_level INFO);
   Log.color_on ();
@@ -122,3 +142,5 @@ let () =
       ) label_strings in
   let auc = ROC.auc (L.combine test_labels test_preds) in
   printf "AUC: %.3f\n" auc
+
+let () = main ()
