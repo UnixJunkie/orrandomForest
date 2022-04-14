@@ -66,13 +66,10 @@ let split_label_features data_csv_fn =
   (tmp_features_fn, tmp_labels_fn)
 
 (* [-np <int>]: max number of processes (default=1)\n
- * [--mtry <float>]: proportion of randomly selected features\n
- * to use at each split (default=(sqrt(|features|))/|features|)\n
  * [--scan-mtry]: scan for best mtry in [0.001,0.002,0.005,...,1.0]\n
  * (incompatible with --mtry)\n
  * [--mtry-range <string>]: mtrys to test e.g. "0.001,0.002,0.005"\n
  * [-o <filename>]: output scores to file\n
- * [--NxCV <int>]: number of folds of cross validation\n
  * [--no-plot]: turn OFF ROC curve\n
  * [-s <filename>]: save model to file\n
  * [-l <filename>]: load model from file\n *)
@@ -93,8 +90,10 @@ let main () =
                used to train (default=%.2f)\n  \
                [--seed <int>: fix random seed]\n  \
                [-n <int>]: num_trees=|RF|; default=%d\n  \
-               [-v]: verbose/debug mode\n  \
-              "
+               [--mtry <float>]: proportion of randomly selected features\n  \
+               to use at each split (default=(sqrt(|feats|))/|feats|)\n  \
+               [--NxCV <int>]: number of folds of cross validation\n  \
+               [-v]: verbose/debug mode\n"
         Sys.argv.(0) train_portion_def nb_trees_def;
       exit 1
     end;
@@ -106,6 +105,7 @@ let main () =
   let nb_trees = CLI.get_int_def ["-n"] args nb_trees_def in
   let verbose = CLI.get_set_bool ["-v"] args in
   let maybe_mtry = CLI.get_float_opt ["--mtry"] args in
+  let cv_folds = CLI.get_int_def ["--NxCV"] args 1 in
   CLI.finalize (); (* ------------------------------------------------------ *)
   let header, all_lines =
     let lines = LO.lines_of_file input_fn in
@@ -115,46 +115,90 @@ let main () =
       (S.lchop header', L.shuffle ~state:rng data_lines)
     | _ -> failwith ("not enough lines in: " ^ input_fn) in
   Log.info "header: %s" header;
-  let n = L.length all_lines in
-  let tmp_train_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_train_" ".csv" in
-  let tmp_test_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_test_" ".csv" in
-  let train_n, test_n =
-    let x = BatFloat.round_to_int (p *. (float_of_int n)) in
-    (x, n - x) in
-  Log.info "train/test: %d/%d" train_n test_n;
-  let train_lines, test_lines = L.takedrop train_n all_lines in
-  LO.lines_to_file tmp_train_fn train_lines;
-  LO.lines_to_file tmp_test_fn test_lines;
-  let train_features_fn, train_labels_fn = split_label_features tmp_train_fn in
-  let nb_features = S.count_char (L.hd all_lines) ' ' in
-  Log.info "|features|=%d" nb_features;
-  (* apply mtry param to nb_features *)
-  let features =
-    let nb_feats = float nb_features in
-    match maybe_mtry with
-    | None -> int_of_float (floor (sqrt nb_feats)) (* default *)
-    | Some mtry -> min nb_features (BatFloat.round_to_int (mtry *. nb_feats)) in
-  Log.info "using %d/%d features" features nb_features;
-  let model = train_classifier verbose nb_trees features train_features_fn train_labels_fn in
-  let feat_importance = Rf.read_predictions (Rf.get_features_importance model) in
-  let index2feature_name = A.of_list (L.tl (S.split_on_char ' ' header)) in
-  assert(L.length feat_importance = A.length index2feature_name);
-  assert(A.length index2feature_name = nb_features);
-  L.iteri (fun i imp ->
-      Log.info "imp(%s): %.2f" index2feature_name.(i) imp
-    ) feat_importance;
-  let test_features_fn, test_labels_fn = split_label_features tmp_test_fn in
-  let test_preds = test_classifier verbose model test_features_fn in
-  let test_labels =
-    (* all labels are on a single line in the labels file *)
-    let tab_separated = L.hd (LO.lines_of_file test_labels_fn) in
-    let label_strings = S.split_on_char '\t' tab_separated in
-    L.map (function
-        | "1" -> true
-        | "-1" -> false
-        | other -> failwith other
-      ) label_strings in
-  let auc = ROC.auc (L.combine test_labels test_preds) in
-  printf "AUC: %.3f\n" auc
+  if cv_folds <= 1 then
+    let n = L.length all_lines in
+    (* FBR: remove those files at the end *)
+    let tmp_train_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_train_" ".csv" in
+    let tmp_test_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_test_" ".csv" in
+    let train_n, test_n =
+      let x = BatFloat.round_to_int (p *. (float_of_int n)) in
+      (x, n - x) in
+    Log.info "train/test: %d/%d" train_n test_n;
+    let train_lines, test_lines = L.takedrop train_n all_lines in
+    LO.lines_to_file tmp_train_fn train_lines;
+    LO.lines_to_file tmp_test_fn test_lines;
+    let train_features_fn, train_labels_fn = split_label_features tmp_train_fn in
+    let nb_features = S.count_char (L.hd all_lines) ' ' in
+    Log.info "|features|=%d" nb_features;
+    (* apply mtry param to nb_features *)
+    let features =
+      let nb_feats = float nb_features in
+      match maybe_mtry with
+      | None -> int_of_float (floor (sqrt nb_feats)) (* default *)
+      | Some mtry -> min nb_features (BatFloat.round_to_int (mtry *. nb_feats)) in
+    Log.info "using %d/%d features" features nb_features;
+    let model = train_classifier verbose nb_trees features train_features_fn train_labels_fn in
+    let feat_importance = Rf.read_predictions (Rf.get_features_importance model) in
+    let index2feature_name = A.of_list (L.tl (S.split_on_char ' ' header)) in
+    assert(L.length feat_importance = A.length index2feature_name);
+    assert(A.length index2feature_name = nb_features);
+    L.iteri (fun i imp ->
+        Log.info "imp(%s): %.2f" index2feature_name.(i) imp
+      ) feat_importance;
+    let test_features_fn, test_labels_fn = split_label_features tmp_test_fn in
+    let test_preds = test_classifier verbose model test_features_fn in
+    let test_labels =
+      (* all labels are on a single line in the labels file *)
+      let tab_separated = L.hd (LO.lines_of_file test_labels_fn) in
+      let label_strings = S.split_on_char '\t' tab_separated in
+      L.map (function
+          | "1" -> true
+          | "-1" -> false
+          | other -> failwith other
+        ) label_strings in
+    let auc = ROC.auc (L.combine test_labels test_preds) in
+    printf "AUC: %.3f\n" auc
+  else (* cv_folds > 1 *)
+    let folds = Cpm.Utls.cv_folds cv_folds all_lines in
+    let for_auc =
+      L.map (fun (train_lines, test_lines) ->
+          let tmp_train_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_train_" ".csv" in
+          let tmp_test_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_test_" ".csv" in
+          LO.lines_to_file tmp_train_fn train_lines;
+          LO.lines_to_file tmp_test_fn test_lines;
+          let train_features_fn, train_labels_fn = split_label_features tmp_train_fn in
+          let nb_features = S.count_char (L.hd all_lines) ' ' in
+          Log.info "|features|=%d" nb_features;
+          (* apply mtry param to nb_features *)
+          let features =
+            let nb_feats = float nb_features in
+            match maybe_mtry with
+            | None -> int_of_float (floor (sqrt nb_feats)) (* default *)
+            | Some mtry -> min nb_features (BatFloat.round_to_int (mtry *. nb_feats)) in
+          Log.info "using %d/%d features" features nb_features;
+          let model = train_classifier verbose nb_trees features train_features_fn train_labels_fn in
+          let feat_importance = Rf.read_predictions (Rf.get_features_importance model) in
+          let index2feature_name = A.of_list (L.tl (S.split_on_char ' ' header)) in
+          assert(L.length feat_importance = A.length index2feature_name);
+          assert(A.length index2feature_name = nb_features);
+          L.iteri (fun i imp ->
+              Log.info "imp(%s): %.2f" index2feature_name.(i) imp
+            ) feat_importance;
+          let test_features_fn, test_labels_fn = split_label_features tmp_test_fn in
+          let test_preds = test_classifier verbose model test_features_fn in
+          let test_labels =
+            (* all labels are on a single line in the labels file *)
+            let tab_separated = L.hd (LO.lines_of_file test_labels_fn) in
+            let label_strings = S.split_on_char '\t' tab_separated in
+            L.map (function
+                | "1" -> true
+                | "-1" -> false
+                | other -> failwith other
+              ) label_strings in
+          L.combine test_labels test_preds
+        ) folds in
+    let label_scores = L.concat for_auc in
+    let auc = ROC.auc label_scores in
+    printf "AUC: %.3f\n" auc
 
 let () = main ()
