@@ -30,9 +30,9 @@ let run_command (cmd: string): unit =
     (Log.fatal "run_command: exit %d: %s" i cmd; exit 1)
   | Unix.WEXITED _ (* i = 0 then *) -> ()
 
-let train_classifier verbose nb_features data_fn labels_fn =
+let train_classifier verbose nb_trees nb_features data_fn labels_fn =
   let params: Rf.params =
-    { ntree = 100;
+    { ntree = nb_trees;
       mtry = int_of_float (floor (sqrt (float nb_features)));
       importance = true } in
   Rf.(train ~debug:verbose
@@ -90,6 +90,7 @@ let main () =
   Log.(set_log_level INFO);
   Log.color_on ();
   let train_portion_def = 0.8 in
+  let nb_trees_def = 100 in
   if argc = 1 then
     begin
       eprintf "usage:\n\
@@ -98,8 +99,9 @@ let main () =
                [-p <float>]: proportion of the (randomized) dataset\n  \
                used to train (default=%.2f)\n  \
                [--seed <int>: fix random seed]\n  \
+               [-n <int>]: num_trees=|RF|; default=%d\n  \
               "
-        Sys.argv.(0) train_portion_def;
+        Sys.argv.(0) train_portion_def nb_trees_def;
       exit 1
     end;
   let input_fn = CLI.get_string ["-i"] args in
@@ -107,6 +109,7 @@ let main () =
   let rng = match CLI.get_int_opt ["--seed"] args with
     | None -> Random.State.make_self_init ()
     | Some seed -> Random.State.make [|seed|] in
+  let nb_trees = CLI.get_int_def ["-n"] args nb_trees_def in
   CLI.finalize (); (* ------------------------------------------------------ *)
   let header, all_lines =
     let lines = LO.lines_of_file input_fn in
@@ -129,7 +132,7 @@ let main () =
   let train_features_fn, train_labels_fn = split_label_features tmp_train_fn in
   let nb_features = S.count_char (L.hd all_lines) ' ' in
   Log.info "|features|=%d" nb_features;
-  let model = train_classifier true nb_features train_features_fn train_labels_fn in
+  let model = train_classifier true nb_trees nb_features train_features_fn train_labels_fn in
   let feat_importance = Rf.read_predictions (Rf.get_features_importance model) in
   let index2feature_name = A.of_list (L.tl (S.split_on_char ' ' header)) in
   assert(L.length feat_importance = A.length index2feature_name);
