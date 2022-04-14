@@ -66,38 +66,44 @@ let split_label_features data_csv_fn =
     );
   (tmp_features_fn, tmp_labels_fn)
 
- (* [-p <float>]: proportion of the (randomized) dataset\n
-  * used to train (default=%.2f)\n
-  * [-np <int>]: max number of processes (default=1)\n
-  * [-n <int>]: |RF|; default=100\n
-  * [--mtry <float>]: proportion of randomly selected features\n
-  * to use at each split (default=(sqrt(|features|))/|features|)\n
-  * [--scan-mtry]: scan for best mtry in [0.001,0.002,0.005,...,1.0]\n
-  * (incompatible with --mtry)\n
-  * [--mtry-range <string>]: mtrys to test e.g. \"0.001,0.002,0.005\"\n
-  * [-o <filename>]: output scores to file\n
-  * [--NxCV <int>]: number of folds of cross validation\n
-  * [--seed <int>: fix random seed]\n
-  * [--no-regr-plot]: turn OFF regression plot\n
-  * [-s <filename>]: save model to file\n
-  * [-l <filename>]: load model from file\n
-  * [--max-feat <int>]: max feature id.
-  * (cf. end of encoding dict)\n
-  * [-v]: verbose/debug mode\n
-  * [-h|--help]: show this help message\n" *)
+               (* [-np <int>]: max number of processes (default=1)\n  \
+                * [-n <int>]: |RF|; default=100\n  \
+                * [--mtry <float>]: proportion of randomly selected features\n  \
+                * to use at each split (default=(sqrt(|features|))/|features|)\n  \
+                * [--scan-mtry]: scan for best mtry in [0.001,0.002,0.005,...,1.0]\n  \
+                * (incompatible with --mtry)\n  \
+                * [--mtry-range <string>]: mtrys to test e.g. \"0.001,0.002,0.005\"\n  \
+                * [-o <filename>]: output scores to file\n  \
+                * [--NxCV <int>]: number of folds of cross validation\n  \
+                * [--seed <int>: fix random seed]\n  \
+                * [--no-regr-plot]: turn OFF regression plot\n  \
+                * [--rec-plot]: turn ON REC curve\n  \
+                * [--y-rand]: turn ON Y-randomization\n  \
+                * [-s <filename>]: save model to file\n  \
+                * [-l <filename>]: load model from file\n  \
+                * [--max-feat <int>]: max feature id.  \
+                * (cf. end of encoding dict)\n  \
+                * [-v]: verbose/debug mode\n  \
+                * [-h|--help]: show this help message\n" *)
 
 let main () =
   let argc, args = CLI.init () in
   Log.(set_log_level INFO);
   Log.color_on ();
+  let train_portion_def = 0.8 in
   if argc = 1 then
     begin
-      eprintf "usage:\n  \
-               %s -i <filename>\n"
-        Sys.argv.(0);
+      eprintf "usage:\n\
+               %s  \
+               -i <train.csv>: training set\n  \
+               [-p <float>]: proportion of the (randomized) dataset\n  \
+               used to train (default=%.2f)\n"
+        Sys.argv.(0) train_portion_def;
       exit 1
     end;
   let input_fn = CLI.get_string ["-i"] args in
+  let p = CLI.get_float_def ["-p"] args train_portion_def in
+  CLI.finalize (); (* ------------------------------------------------------ *)
   let header, all_lines =
     let lines = LO.lines_of_file input_fn in
     match lines with
@@ -110,7 +116,6 @@ let main () =
   let n = L.length all_lines in
   let tmp_train_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_train_" ".csv" in
   let tmp_test_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_test_" ".csv" in
-  let p = 0.8 in
   let train_n, test_n =
     let x = BatFloat.round_to_int (p *. (float_of_int n)) in
     (x, n - x) in
