@@ -30,15 +30,14 @@ let run_command (cmd: string): unit =
     (Log.fatal "run_command: exit %d: %s" i cmd; exit 1)
   | Unix.WEXITED _ (* i = 0 then *) -> ()
 
-let train_classifier verbose nb_trees nb_features data_fn labels_fn =
-  let params: Rf.params =
-    { ntree = nb_trees;
-      mtry = int_of_float (floor (sqrt (float nb_features)));
-      importance = true } in
+let train_classifier verbose trees features data_fn labels_fn =
   Rf.(train ~debug:verbose
         Classification
         Rf.Dense
-        params
+        (* parameters *)
+        { ntree = trees;
+          mtry = features;
+          importance = true }
         data_fn
         labels_fn)
 
@@ -66,23 +65,17 @@ let split_label_features data_csv_fn =
     );
   (tmp_features_fn, tmp_labels_fn)
 
-               (* [-np <int>]: max number of processes (default=1)\n  \
-                * [-n <int>]: |RF|; default=100\n  \
-                * [--mtry <float>]: proportion of randomly selected features\n  \
-                * to use at each split (default=(sqrt(|features|))/|features|)\n  \
-                * [--scan-mtry]: scan for best mtry in [0.001,0.002,0.005,...,1.0]\n  \
-                * (incompatible with --mtry)\n  \
-                * [--mtry-range <string>]: mtrys to test e.g. \"0.001,0.002,0.005\"\n  \
-                * [-o <filename>]: output scores to file\n  \
-                * [--NxCV <int>]: number of folds of cross validation\n  \
-                * [--no-regr-plot]: turn OFF regression plot\n  \
-                * [--rec-plot]: turn ON REC curve\n  \
-                * [--y-rand]: turn ON Y-randomization\n  \
-                * [-s <filename>]: save model to file\n  \
-                * [-l <filename>]: load model from file\n  \
-                * [--max-feat <int>]: max feature id.  \
-                * (cf. end of encoding dict)\n  \
-                * [-h|--help]: show this help message\n" *)
+(* [-np <int>]: max number of processes (default=1)\n
+ * [--mtry <float>]: proportion of randomly selected features\n
+ * to use at each split (default=(sqrt(|features|))/|features|)\n
+ * [--scan-mtry]: scan for best mtry in [0.001,0.002,0.005,...,1.0]\n
+ * (incompatible with --mtry)\n
+ * [--mtry-range <string>]: mtrys to test e.g. "0.001,0.002,0.005"\n
+ * [-o <filename>]: output scores to file\n
+ * [--NxCV <int>]: number of folds of cross validation\n
+ * [--no-plot]: turn OFF ROC curve\n
+ * [-s <filename>]: save model to file\n
+ * [-l <filename>]: load model from file\n *)
 
 let main () =
   let argc, args = CLI.init () in
@@ -90,7 +83,7 @@ let main () =
   Log.color_on ();
   let train_portion_def = 0.8 in
   let nb_trees_def = 100 in
-  if argc = 1 then
+  if argc = 1 || CLI.get_set_bool ["-h";"--help"] args then
     begin
       eprintf "usage:\n\
                %s  \
@@ -133,7 +126,8 @@ let main () =
   let train_features_fn, train_labels_fn = split_label_features tmp_train_fn in
   let nb_features = S.count_char (L.hd all_lines) ' ' in
   Log.info "|features|=%d" nb_features;
-  let model = train_classifier verbose nb_trees nb_features train_features_fn train_labels_fn in
+  let features = int_of_float (floor (sqrt (float nb_features))) in
+  let model = train_classifier verbose nb_trees features train_features_fn train_labels_fn in
   let feat_importance = Rf.read_predictions (Rf.get_features_importance model) in
   let index2feature_name = A.of_list (L.tl (S.split_on_char ' ' header)) in
   assert(L.length feat_importance = A.length index2feature_name);
