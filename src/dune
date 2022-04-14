@@ -5,6 +5,13 @@
  (libraries dolog))
 
 (executables
+ (names model)
+ (public_names orrf_model)
+ (modules model)
+ (libraries batteries minicli line_oriented orrandomForest cpm))
+
+;; never installed executables
+(executables
  (names test)
  (modules test)
  (libraries dolog batteries cpm orrandomForest))
