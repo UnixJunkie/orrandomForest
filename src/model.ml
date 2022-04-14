@@ -1,6 +1,3 @@
-#!/usr/bin/env ocamlscript
-Ocaml.packs := ["batteries";"minicli";"line_oriented";"orrandomForest";"cpm"]
---
 (* train a RFC from a space-separated csv file (training set);
    first column must be the classification label (1: class of interest; -1: other class) *)
 
