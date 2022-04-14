@@ -75,7 +75,6 @@ let split_label_features data_csv_fn =
                 * [--mtry-range <string>]: mtrys to test e.g. \"0.001,0.002,0.005\"\n  \
                 * [-o <filename>]: output scores to file\n  \
                 * [--NxCV <int>]: number of folds of cross validation\n  \
-                * [--seed <int>: fix random seed]\n  \
                 * [--no-regr-plot]: turn OFF regression plot\n  \
                 * [--rec-plot]: turn ON REC curve\n  \
                 * [--y-rand]: turn ON Y-randomization\n  \
@@ -97,18 +96,22 @@ let main () =
                %s  \
                -i <train.csv>: training set\n  \
                [-p <float>]: proportion of the (randomized) dataset\n  \
-               used to train (default=%.2f)\n"
+               used to train (default=%.2f)\n  \
+               [--seed <int>: fix random seed]\n  \
+              "
         Sys.argv.(0) train_portion_def;
       exit 1
     end;
   let input_fn = CLI.get_string ["-i"] args in
   let p = CLI.get_float_def ["-p"] args train_portion_def in
+  let rng = match CLI.get_int_opt ["--seed"] args with
+    | None -> Random.State.make_self_init ()
+    | Some seed -> Random.State.make [|seed|] in
   CLI.finalize (); (* ------------------------------------------------------ *)
   let header, all_lines =
     let lines = LO.lines_of_file input_fn in
     match lines with
     | header' :: data_lines ->
-      let rng = Random.State.make_self_init () in
       assert(S.starts_with header' "#");
       (S.lchop header', L.shuffle ~state:rng data_lines)
     | _ -> failwith ("not enough lines in: " ^ input_fn) in
