@@ -82,7 +82,6 @@ let split_label_features data_csv_fn =
                 * [-l <filename>]: load model from file\n  \
                 * [--max-feat <int>]: max feature id.  \
                 * (cf. end of encoding dict)\n  \
-                * [-v]: verbose/debug mode\n  \
                 * [-h|--help]: show this help message\n" *)
 
 let main () =
@@ -100,6 +99,7 @@ let main () =
                used to train (default=%.2f)\n  \
                [--seed <int>: fix random seed]\n  \
                [-n <int>]: num_trees=|RF|; default=%d\n  \
+               [-v]: verbose/debug mode\n  \
               "
         Sys.argv.(0) train_portion_def nb_trees_def;
       exit 1
@@ -110,6 +110,7 @@ let main () =
     | None -> Random.State.make_self_init ()
     | Some seed -> Random.State.make [|seed|] in
   let nb_trees = CLI.get_int_def ["-n"] args nb_trees_def in
+  let verbose = CLI.get_set_bool ["-v"] args in
   CLI.finalize (); (* ------------------------------------------------------ *)
   let header, all_lines =
     let lines = LO.lines_of_file input_fn in
@@ -132,7 +133,7 @@ let main () =
   let train_features_fn, train_labels_fn = split_label_features tmp_train_fn in
   let nb_features = S.count_char (L.hd all_lines) ' ' in
   Log.info "|features|=%d" nb_features;
-  let model = train_classifier true nb_trees nb_features train_features_fn train_labels_fn in
+  let model = train_classifier verbose nb_trees nb_features train_features_fn train_labels_fn in
   let feat_importance = Rf.read_predictions (Rf.get_features_importance model) in
   let index2feature_name = A.of_list (L.tl (S.split_on_char ' ' header)) in
   assert(L.length feat_importance = A.length index2feature_name);
@@ -141,7 +142,7 @@ let main () =
       Log.info "imp(%s): %.2f" index2feature_name.(i) imp
     ) feat_importance;
   let test_features_fn, test_labels_fn = split_label_features tmp_test_fn in
-  let test_preds = test_classifier true model test_features_fn in
+  let test_preds = test_classifier verbose model test_features_fn in
   let test_labels =
     (* all labels are on a single line in the labels file *)
     let tab_separated = L.hd (LO.lines_of_file test_labels_fn) in
