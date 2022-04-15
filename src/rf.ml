@@ -212,11 +212,14 @@ let predict
     (mode: mode)
     (sparse: sparsity)
     (maybe_model_fn: Result.t)
-    (data_fn: filename): Result.t =
+    (data_fn: filename)
+    (preds_out_fn: filename option): Result.t =
   match maybe_model_fn with
   | Error err -> Error err
   | Ok model_fn ->
-    let predictions_fn = Filename.temp_file "orrf_predictions_" ".txt" in
+    let predictions_fn = match preds_out_fn with
+      | None -> Filename.temp_file "orrf_predictions_" ".txt"
+      | Some fn -> fn in
     (* create R script in temp file *)
     let r_script_fn = Filename.temp_file "orrf_predict_" ".r" in
     let read_x_str = read_matrix_str sparse data_fn in

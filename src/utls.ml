@@ -65,11 +65,10 @@ let collect_script_and_log
   Error err_msg
 
 let read_predictions (debug: bool) (maybe_predictions_fn: Result.t)
-  : float list =
+  : float list * filename =
   match maybe_predictions_fn with
   | Error err -> failwith err (* should have been handled by user before *)
   | Ok predictions_fn ->
     if debug then Log.debug "%s" predictions_fn;
-    let res = float_list_of_file predictions_fn in
-    if not debug then Sys.remove predictions_fn;
-    res
+    (* we did not create that file; we are not responsible for it and will not delete it *)
+    (float_list_of_file predictions_fn, predictions_fn)

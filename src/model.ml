@@ -43,9 +43,10 @@ let train_classifier verbose trees features data_fn labels_fn =
         data_fn
         labels_fn)
 
-let test_classifier verbose trained_model data_fn =
+let test_classifier verbose trained_model data_fn maybe_preds_out_fn =
   Rf.(read_predictions
-        (predict ~debug:verbose Classification Dense trained_model data_fn))
+        (predict ~debug:verbose Classification Dense trained_model
+           data_fn maybe_preds_out_fn))
 
 let split_label_features verbose data_csv_fn =
   let tmp_labels_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_labels_" ".csv" in
@@ -83,13 +84,15 @@ let train_test verbose trees features index2feature_name train_lines test_lines 
   let train_features_fn, train_labels_fn = split_label_features verbose tmp_train_fn in
   let model = train_classifier verbose trees features train_features_fn train_labels_fn in
   L.iter Sys.remove [tmp_train_fn; train_features_fn; train_labels_fn];
-  let feat_importance = Rf.read_predictions (Rf.get_features_importance model) in
+  let feat_importance, imp_fn = Rf.read_predictions (Rf.get_features_importance model) in
+  Sys.remove imp_fn;
   assert(L.length feat_importance = A.length index2feature_name);
   L.iteri (fun i imp ->
       Log.info "imp(%s): %.2f" index2feature_name.(i) imp
     ) feat_importance;
   let test_features_fn, test_labels_fn = split_label_features verbose tmp_test_fn in
-  let test_preds = test_classifier verbose model test_features_fn in
+  let test_preds, preds_fn = test_classifier verbose model test_features_fn None in
+  Sys.remove preds_fn;
   let test_labels =
     (* all labels are on a single line in the labels file *)
     let tab_separated = L.hd (LO.lines_of_file test_labels_fn) in

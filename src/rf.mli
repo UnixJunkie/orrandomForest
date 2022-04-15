@@ -67,12 +67,13 @@ val get_features_importance:
   Result.t ->
   Result.t
 
-(** [predict ?debug mode sparsity model data_fn]
+(** [predict ?debug mode sparsity model data_fn maybe_preds_out_fn]
     will run the previously trained random forest
     on the data stored in [data_fn].
     [data_fn] must use the same format than the file that was used
     during training.
-    On success, a filename is returned.
+    On success, a filename is returned (you can provide one via
+    the [maybe_preds_out_fn] option).
     This text file contains the predicted values,
     one for each line of [data_fn]. *)
 val predict:
@@ -81,14 +82,13 @@ val predict:
   sparsity ->
   Result.t ->
   filename ->
+  filename option ->
   Result.t
 
 (** [read_predictions ?debug result] will decode predicted values
     in [result], or crash if the previous call to [predict]
-    was not successful.
-    Upon success and if [not debug], the file containing the
-    predicted decision values is removed. *)
+    was not successful. *)
 val read_predictions:
   ?debug:bool ->
   Result.t ->
-  float list
+  (float list * filename)
