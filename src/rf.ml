@@ -74,8 +74,11 @@ let train
     (sparse: sparsity)
     (params: params)
     (data_fn: filename)
-    (labels_fn: filename): Result.t =
-  let model_fn: filename = Filename.temp_file "orrf_model_" ".bin" in
+    (labels_fn: filename)
+    (maybe_model_out_fn: filename option): Result.t =
+  let model_fn: filename = match maybe_model_out_fn with
+    | None -> Filename.temp_file "orrf_model_" ".bin"
+    | Some fn -> fn in
   (* create R script and store it in a temp file *)
   let r_script_fn = Filename.temp_file "orrf_train_" ".r" in
   let read_x_str = read_matrix_str sparse data_fn in

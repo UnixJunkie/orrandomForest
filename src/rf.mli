@@ -18,9 +18,11 @@ type sparsity = Dense
 (** get the default parameters to train a classifier or regressor *)
 val default_params: int -> mode -> params
 
-(** [train ?debug mode sparsity params data_fn labels_fn]
+(** [train ?debug mode sparsity params data_fn labels_fn maybe_model_out_fn]
     will train a random forest using given parameters
     on the data in [data_fn] with labels in [labels_fn].
+    If [maybe_model_out_fn] <> None, the trained model will be saved
+    to the file with given name.
     [data_fn] is a numerical matrix dumped in a tab-separated text file
     without any format header.
     Dense or sparse matrices (in CSR format) are supported.
@@ -39,7 +41,8 @@ val train:
   sparsity ->
   params ->
   filename ->
-  filename -> Result.t
+  filename ->
+  filename option -> Result.t
 
 (** [pre_train ?debug mode sparsity data_fn labels_fn]
     prepare data and labels for faster loading later on *)
