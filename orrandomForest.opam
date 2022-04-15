@@ -13,18 +13,16 @@ install: [
   ["R" "CMD" "BATCH" "install_matrix.r"]
 ]
 depends: [
-  "dune" {>= "1.0.0"}
-  "ocaml"
-  "dune"
-  "dolog" {>= "4.0.0"}
-  "conf-r"
-  "parany"
   "batteries"
-  "minicli"
-  "cpm"
-  "line_oriented"
   "conf-gnuplot" {with-test}
-  "cpm" {with-test}
+  "conf-r"
+  "cpm"
+  "dolog" {>= "4.0.0"}
+  "dune" {>= "1.0.0"}
+  "line_oriented"
+  "minicli"
+  "ocaml"
+  "parany"
 ]
 x-ci-accept-failures: ["debian-unstable"]
 post-messages: [
