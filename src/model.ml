@@ -159,7 +159,6 @@ let main () =
       exit 1
     end;
   let input_fn = CLI.get_string ["-i"] args in
-  let p = CLI.get_float_def ["-p"] args train_portion_def in
   let rng = match CLI.get_int_opt ["--seed"] args with
     | None -> Random.State.make_self_init ()
     | Some seed -> Random.State.make [|seed|] in
@@ -169,13 +168,21 @@ let main () =
   let cv_folds = CLI.get_int_def ["--NxCV"] args 1 in
   let nprocs = CLI.get_int_def ["-np"] args 1 in
   let maybe_preds_out_fn = CLI.get_string_opt ["-o"] args in
-  let mode =
+  let p, mode =
     begin match CLI.get_string_opt ["-l"] args with
-      | Some fn -> Load_from fn
+      | Some fn ->
+        (* no training portion *)
+        let () = Log.info "p forced to 0.0" in
+        (0.0, Load_from fn)
       | None ->
         begin match CLI.get_string_opt ["-s"] args with
-          | Some fn -> Save_to fn
-          | None -> Ignore
+          | Some fn ->
+            (* training on whole dataset *)
+            let () = Log.info "p forced to 1.0" in
+            (1.0, Save_to fn)
+          | None ->
+            let p = CLI.get_float_def ["-p"] args train_portion_def in
+            (p, Ignore)
         end
     end in
   CLI.finalize (); (* ------------------------------------------------------ *)
@@ -184,7 +191,14 @@ let main () =
     match lines with
     | header' :: data_lines ->
       assert(S.starts_with header' "#");
-      (S.lchop header', L.shuffle ~state:rng data_lines)
+      (S.lchop header',
+       if p > 0.0 then
+         (* if some model training is to be done: shuffle training set *)
+         L.shuffle ~state:rng data_lines
+       else
+         (* when predicting in production: DO NOT shuffle lines *)
+         data_lines
+      )
     | _ -> failwith ("not enough lines in: " ^ input_fn) in
   Log.info "header: %s" header;
   let nb_features = S.count_char header ' ' in
