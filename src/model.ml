@@ -68,21 +68,13 @@ let split_label_features verbose data_csv_fn =
     );
   (tmp_features_fn, tmp_labels_fn)
 
-(* [--scan-mtry]: scan for best mtry in [0.001,0.002,0.005,...,1.0]\n
- * (incompatible with --mtry)\n
- * [--mtry-range <string>]: mtrys to test e.g. "0.001,0.002,0.005"\n
- * [-o <filename>]: output scores to file\n
- * [--no-plot]: turn OFF ROC curve\n
- * [-s <filename>]: save model to file\n
- * [-l <filename>]: load model from file\n *)
-
 let train_test verbose trees features index2feature_name train_lines test_lines =
   let tmp_train_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_train_" ".csv" in
   let tmp_test_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_test_" ".csv" in
   LO.lines_to_file tmp_train_fn train_lines;
   LO.lines_to_file tmp_test_fn test_lines;
   let train_features_fn, train_labels_fn = split_label_features verbose tmp_train_fn in
-  let model = train_classifier verbose trees features train_features_fn train_labels_fn in
+  let model = train_classifier verbose trees features train_features_fn train_labels_fn None in
   L.iter Sys.remove [tmp_train_fn; train_features_fn; train_labels_fn];
   let feat_importance, imp_fn = Rf.read_predictions (Rf.get_features_importance model) in
   Sys.remove imp_fn;
@@ -105,6 +97,40 @@ let train_test verbose trees features index2feature_name train_lines test_lines 
   L.iter Sys.remove [tmp_test_fn; test_features_fn; test_labels_fn];
   L.combine test_labels test_preds
 
+let only_train verbose trees features index2feature_name train_lines maybe_model_out_fn =
+  let tmp_train_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_train_" ".csv" in
+  LO.lines_to_file tmp_train_fn train_lines;
+  let train_features_fn, train_labels_fn = split_label_features verbose tmp_train_fn in
+  let model = train_classifier verbose trees features train_features_fn train_labels_fn maybe_model_out_fn in
+  L.iter Sys.remove [tmp_train_fn; train_features_fn; train_labels_fn];
+  let feat_importance, imp_fn = Rf.read_predictions (Rf.get_features_importance model) in
+  Sys.remove imp_fn;
+  assert(L.length feat_importance = A.length index2feature_name);
+  L.iteri (fun i imp ->
+      Log.info "imp(%s): %.2f" index2feature_name.(i) imp
+    ) feat_importance;
+  model
+
+let only_predict verbose trained_model test_lines maybe_preds_out_fn =
+  let tmp_test_fn = Fn.temp_file ~temp_dir:"/tmp" "classif_test_" ".csv" in
+  LO.lines_to_file tmp_test_fn test_lines;
+  let test_features_fn, test_labels_fn = split_label_features verbose tmp_test_fn in
+  let _test_preds, preds_fn = test_classifier verbose trained_model test_features_fn maybe_preds_out_fn in
+  (match maybe_preds_out_fn with
+   | None -> Sys.remove preds_fn
+   | Some _ -> ()
+  );
+  L.iter Sys.remove [tmp_test_fn; test_features_fn; test_labels_fn]
+
+type model_file_mode = Save_to of string
+                     | Load_from of string
+                     | Ignore
+
+(* [--scan-mtry]: scan for best mtry in [0.001,0.002,0.005,...,1.0]\n
+ * (incompatible with --mtry)\n
+ * [--mtry-range <string>]: mtrys to test e.g. "0.001,0.002,0.005"\n
+ * [--no-plot]: turn OFF ROC curve\n *)
+
 let main () =
   let argc, args = CLI.init () in
   Log.(set_log_level INFO);
@@ -125,6 +151,9 @@ let main () =
                to use at each split (default=(sqrt(|feats|))/|feats|)\n  \
                [--NxCV <int>]: number of folds of cross validation\n  \
                [-np <int>]: max number of processes for --NxCV (default=1)\n  \
+               [-s <filename>]: save model to file after training\n  \
+               [-l <filename>]: load trained model from file\n  \
+               [-o <filename>]: save predictions to file\n
                [-v]: verbose/debug mode\n"
         Sys.argv.(0) train_portion_def nb_trees_def;
       exit 1
@@ -139,6 +168,16 @@ let main () =
   let maybe_mtry = CLI.get_float_opt ["--mtry"] args in
   let cv_folds = CLI.get_int_def ["--NxCV"] args 1 in
   let nprocs = CLI.get_int_def ["-np"] args 1 in
+  let maybe_preds_out_fn = CLI.get_string_opt ["-o"] args in
+  let mode =
+    begin match CLI.get_string_opt ["-l"] args with
+      | Some fn -> Load_from fn
+      | None ->
+        begin match CLI.get_string_opt ["-s"] args with
+          | Some fn -> Save_to fn
+          | None -> Ignore
+        end
+    end in
   CLI.finalize (); (* ------------------------------------------------------ *)
   let header, all_lines =
     let lines = LO.lines_of_file input_fn in
@@ -167,7 +206,19 @@ let main () =
         (x, n - x) in
       Log.info "train/test: %d/%d" train_n test_n;
       let train_lines, test_lines = L.takedrop train_n all_lines in
-      train_test verbose nb_trees features index2feature_name train_lines test_lines
+      match mode with
+      | Ignore ->
+        train_test
+          verbose nb_trees features index2feature_name train_lines test_lines
+      | Save_to model_out_fn ->
+        let _trained_model =
+          only_train
+            verbose nb_trees features index2feature_name train_lines (Some model_out_fn) in
+        [] (* no predictions *)
+      | Load_from model_fn ->
+        let () = only_predict verbose (Ok model_fn) test_lines maybe_preds_out_fn in
+        [] (* production mode: we don't know the true labels so we cannot combine
+              them with the predictions *)
     else (* cv_folds > 1 *)
       let folds = Cpm.Utls.cv_folds cv_folds all_lines in
       let for_auc =
@@ -175,7 +226,10 @@ let main () =
             train_test verbose nb_trees features index2feature_name train_lines test_lines
           ) folds in
       L.concat for_auc in
-  let auc = ROC.auc label_scores in
-  printf "AUC: %.3f\n" auc
+  match label_scores with
+  | [] -> () (* only train or only predict: performance cannot be estimated *)
+  | _ ->
+    let auc = ROC.auc label_scores in
+    printf "AUC: %.3f\n" auc
 
 let () = main ()
