@@ -126,8 +126,6 @@ type model_file_mode = Save_to of string
                      | Load_from of string
                      | Ignore
 
-(* [--no-plot]: turn OFF ROC curve\n *)
-
 let main () =
   let argc, args = CLI.init () in
   Log.(set_log_level INFO);
@@ -154,6 +152,7 @@ let main () =
                [-s <filename>]: save model to file after training\n  \
                [-l <filename>]: load trained model from file\n  \
                [-o <filename>]: save predictions to file\n  \
+               [--no-plot]: turn OFF ROC curve\n  \
                [-v]: verbose/debug mode\n"
         Sys.argv.(0) train_portion_def nb_trees_def;
       exit 1
@@ -170,6 +169,7 @@ let main () =
   let cv_folds = CLI.get_int_def ["--NxCV"] args 1 in
   let nprocs = CLI.get_int_def ["-np"] args 1 in
   let maybe_preds_out_fn = CLI.get_string_opt ["-o"] args in
+  let no_plot = CLI.get_set_bool ["--no-plot"] args in
   let p, mode =
     begin match CLI.get_string_opt ["-l"] args with
       | Some fn ->
@@ -267,8 +267,13 @@ let main () =
       match label_scores with
       | [] -> () (* only train or only predict: performance cannot be estimated *)
       | _ ->
-        let auc = ROC.auc label_scores in
-        Log.info "|trees|=%d mtry=%g feats=%d AUC: %.3f\n" nb_trees mtry features auc
+        let for_auc = ROC.rank_order_by_score label_scores in
+        let auc = ROC.fast_auc for_auc in
+        let title_str =
+          sprintf "|trees|=%d mtry=%.4g feats=%d k=%d AUC: %.3f"
+            nb_trees mtry features cv_folds auc in
+        Log.info "%s" title_str;
+        Gnuplot.performance_plot ~noplot:no_plot title_str (A.of_list for_auc)
     ) mtrys
 
 let () = main ()

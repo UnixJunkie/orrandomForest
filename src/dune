@@ -7,8 +7,8 @@
 (executables
  (names model)
  (public_names orrf_model)
- (modules model)
- (libraries batteries minicli line_oriented orrandomForest cpm parany))
+ (modules model gnuplot)
+ (libraries batteries minicli orrandomForest cpm parany line_oriented))
 
 ;; never installed executables
 (executables
