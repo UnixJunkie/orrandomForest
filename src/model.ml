@@ -222,11 +222,17 @@ let main () =
     | _ -> failwith "Model.main: only one of {--mtry|--scan-mtry|--mtry-range}" in
   let index2feature_name = A.of_list (L.tl (S.split_on_char ' ' header)) in
   assert(A.length index2feature_name = nb_features);
-  L.iter (fun mtry ->
+  let nprocs1 =
+    (* choose at which level there will be parallelization *)
+    if L.length mtrys >= cv_folds then nprocs
+    else 1 in
+  Parany.Parmap.pariter nprocs1 (fun mtry ->
       (* apply mtry param to nb_features *)
-      let features = min nb_features (BatFloat.round_to_int (mtry *. nb_feats)) in
+      let features =
+        let x = BatFloat.round_to_int (mtry *. nb_feats) in
+        (* constrain nb_features in [1, nb_features] *)
+        min nb_features (max x 1) in
       Log.info "using %d/%d features" features nb_features;
-
       let label_scores =
         if cv_folds <= 1 then
           let n = L.length all_lines in
@@ -251,7 +257,10 @@ let main () =
         else (* cv_folds > 1 *)
           let folds = Cpm.Utls.cv_folds cv_folds all_lines in
           let for_auc =
-            Parany.Parmap.parmap nprocs (fun (train_lines, test_lines) ->
+            let nprocs2 =
+              if cv_folds > L.length mtrys then nprocs
+              else 1 (* do not parallelize inside of a parallel loop *) in
+            Parany.Parmap.parmap nprocs2 (fun (train_lines, test_lines) ->
                 train_test verbose nb_trees features index2feature_name train_lines test_lines
               ) folds in
           L.concat for_auc in
@@ -259,7 +268,7 @@ let main () =
       | [] -> () (* only train or only predict: performance cannot be estimated *)
       | _ ->
         let auc = ROC.auc label_scores in
-        printf "AUC: %.3f\n" auc
+        Log.info "|trees|=%d mtry=%g feats=%d AUC: %.3f\n" nb_trees mtry features auc
     ) mtrys
 
 let () = main ()
