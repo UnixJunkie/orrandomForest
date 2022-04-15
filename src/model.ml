@@ -126,10 +126,7 @@ type model_file_mode = Save_to of string
                      | Load_from of string
                      | Ignore
 
-(* [--scan-mtry]: scan for best mtry in [0.001,0.002,0.005,...,1.0]\n
- * (incompatible with --mtry)\n
- * [--mtry-range <string>]: mtrys to test e.g. "0.001,0.002,0.005"\n
- * [--no-plot]: turn OFF ROC curve\n *)
+(* [--no-plot]: turn OFF ROC curve\n *)
 
 let main () =
   let argc, args = CLI.init () in
@@ -149,11 +146,14 @@ let main () =
                [-n <int>]: num_trees=|RF|; default=%d\n  \
                [--mtry <float>]: proportion of randomly selected features\n  \
                to use at each split (default=(sqrt(|feats|))/|feats|)\n  \
+               [--scan-mtry]: scan for best mtry in [0.001,0.002,0.005,...,1.0]\n  \
+               (incompatible with --mtry)\n  \
+               [--mtry-range <string>]: mtrys to test e.g. \"0.001,0.002,0.005\"\n  \
                [--NxCV <int>]: number of folds of cross validation\n  \
                [-np <int>]: max number of processes for --NxCV (default=1)\n  \
                [-s <filename>]: save model to file after training\n  \
                [-l <filename>]: load trained model from file\n  \
-               [-o <filename>]: save predictions to file\n
+               [-o <filename>]: save predictions to file\n  \
                [-v]: verbose/debug mode\n"
         Sys.argv.(0) train_portion_def nb_trees_def;
       exit 1
@@ -165,6 +165,8 @@ let main () =
   let nb_trees = CLI.get_int_def ["-n"] args nb_trees_def in
   let verbose = CLI.get_set_bool ["-v"] args in
   let maybe_mtry = CLI.get_float_opt ["--mtry"] args in
+  let scan_mtry = CLI.get_set_bool ["--scan-mtry"] args in
+  let mtry_range = CLI.get_string_opt ["--mtry-range"] args in
   let cv_folds = CLI.get_int_def ["--NxCV"] args 1 in
   let nprocs = CLI.get_int_def ["-np"] args 1 in
   let maybe_preds_out_fn = CLI.get_string_opt ["-o"] args in
@@ -202,48 +204,62 @@ let main () =
     | _ -> failwith ("not enough lines in: " ^ input_fn) in
   Log.info "header: %s" header;
   let nb_features = S.count_char header ' ' in
+  let nb_feats = float nb_features in
   Log.info "|features|=%d" nb_features;
-  (* apply mtry param to nb_features *)
-  let features =
-    let nb_feats = float nb_features in
-    match maybe_mtry with
-    | None -> int_of_float (floor (sqrt nb_feats)) (* default *)
-    | Some mtry -> min nb_features (BatFloat.round_to_int (mtry *. nb_feats)) in
-  Log.info "using %d/%d features" features nb_features;
+  let mtrys = match (maybe_mtry, scan_mtry, mtry_range) with
+    | (Some mtry', false, None) -> [mtry'] (* single mtry value *)
+    | (None, true, None) -> (* exponential scan *)
+      (* high values first, for better parallelization if not enough cores
+         (they'll take longer to complete) *)
+      L.rev [0.001; 0.002; 0.005;
+             0.01 ; 0.02 ; 0.05 ;
+             0.1  ; 0.2  ; 0.5  ; 1.0]
+    | (None, false, Some range_str) ->
+      L.map (fun x_str -> float_of_string x_str)
+        (S.split_on_char ',' range_str)
+    | (None, false, None) ->
+      [(sqrt nb_feats) /. nb_feats]
+    | _ -> failwith "Model.main: only one of {--mtry|--scan-mtry|--mtry-range}" in
   let index2feature_name = A.of_list (L.tl (S.split_on_char ' ' header)) in
   assert(A.length index2feature_name = nb_features);
-  let label_scores =
-    if cv_folds <= 1 then
-      let n = L.length all_lines in
-      let train_n, test_n =
-        let x = BatFloat.round_to_int (p *. (float_of_int n)) in
-        (x, n - x) in
-      Log.info "train/test: %d/%d" train_n test_n;
-      let train_lines, test_lines = L.takedrop train_n all_lines in
-      match mode with
-      | Ignore ->
-        train_test
-          verbose nb_trees features index2feature_name train_lines test_lines
-      | Save_to model_out_fn ->
-        let _trained_model =
-          only_train
-            verbose nb_trees features index2feature_name train_lines (Some model_out_fn) in
-        [] (* no predictions *)
-      | Load_from model_fn ->
-        let () = only_predict verbose (Ok model_fn) test_lines maybe_preds_out_fn in
-        [] (* production mode: we don't know the true labels so we cannot combine
-              them with the predictions *)
-    else (* cv_folds > 1 *)
-      let folds = Cpm.Utls.cv_folds cv_folds all_lines in
-      let for_auc =
-        Parany.Parmap.parmap nprocs (fun (train_lines, test_lines) ->
-            train_test verbose nb_trees features index2feature_name train_lines test_lines
-          ) folds in
-      L.concat for_auc in
-  match label_scores with
-  | [] -> () (* only train or only predict: performance cannot be estimated *)
-  | _ ->
-    let auc = ROC.auc label_scores in
-    printf "AUC: %.3f\n" auc
+  L.iter (fun mtry ->
+      (* apply mtry param to nb_features *)
+      let features = min nb_features (BatFloat.round_to_int (mtry *. nb_feats)) in
+      Log.info "using %d/%d features" features nb_features;
+
+      let label_scores =
+        if cv_folds <= 1 then
+          let n = L.length all_lines in
+          let train_n, test_n =
+            let x = BatFloat.round_to_int (p *. (float_of_int n)) in
+            (x, n - x) in
+          Log.info "train/test: %d/%d" train_n test_n;
+          let train_lines, test_lines = L.takedrop train_n all_lines in
+          match mode with
+          | Ignore ->
+            train_test
+              verbose nb_trees features index2feature_name train_lines test_lines
+          | Save_to model_out_fn ->
+            let _trained_model =
+              only_train
+                verbose nb_trees features index2feature_name train_lines (Some model_out_fn) in
+            [] (* no predictions *)
+          | Load_from model_fn ->
+            let () = only_predict verbose (Ok model_fn) test_lines maybe_preds_out_fn in
+            [] (* production mode: we don't know the true labels so we cannot combine
+                  them with the predictions *)
+        else (* cv_folds > 1 *)
+          let folds = Cpm.Utls.cv_folds cv_folds all_lines in
+          let for_auc =
+            Parany.Parmap.parmap nprocs (fun (train_lines, test_lines) ->
+                train_test verbose nb_trees features index2feature_name train_lines test_lines
+              ) folds in
+          L.concat for_auc in
+      match label_scores with
+      | [] -> () (* only train or only predict: performance cannot be estimated *)
+      | _ ->
+        let auc = ROC.auc label_scores in
+        printf "AUC: %.3f\n" auc
+    ) mtrys
 
 let () = main ()
