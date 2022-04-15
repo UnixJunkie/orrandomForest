@@ -136,8 +136,7 @@ let main () =
   if argc = 1 || CLI.get_set_bool ["-h";"--help"] args then
     begin
       eprintf "usage:\n\
-               %s  \
-               -i <train.csv>: training set\n  \
+               %s -i <train.csv>: training set\n  \
                [-p <float>]: proportion of the (randomized) dataset\n  \
                used to train (default=%.2f)\n  \
                [--seed <int>: fix random seed]\n  \
@@ -148,11 +147,11 @@ let main () =
                (incompatible with --mtry)\n  \
                [--mtry-range <string>]: mtrys to test e.g. \"0.001,0.002,0.005\"\n  \
                [--NxCV <int>]: number of folds of cross validation\n  \
-               [-np <int>]: max number of processes for --NxCV (default=1)\n  \
+               [-np <int>]: max number of parallel processes (default=1)\n  \
                [-s <filename>]: save model to file after training\n  \
                [-l <filename>]: load trained model from file\n  \
                [-o <filename>]: save predictions to file\n  \
-               [--no-plot]: turn OFF ROC curve\n  \
+               [--no-plot]: turn off ROC curve\n  \
                [-v]: verbose/debug mode\n"
         Sys.argv.(0) train_portion_def nb_trees_def;
       exit 1
